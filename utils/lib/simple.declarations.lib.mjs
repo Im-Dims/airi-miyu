@@ -21,14 +21,14 @@ const { proto,
   WAMessageStubType  
 } = (await import('baileys')).default
 
-const simpleDeclarations = async (chat) => {
+const simpleDeclarations = async (sock) => {
   try {
     /**
      * Regex mention match
      * @param {String} query
      * @returns
     **/
-    chat.ments = async (query) => {
+    sock.ments = async (query) => {
       return new Promise((r, j) => r(query.match("@") ? [...query.matchAll(/@([0-9]{5,16}|0)/g)].map((v) => v[1] + configs.idwa) : []))
     }
   
@@ -37,7 +37,7 @@ const simpleDeclarations = async (chat) => {
      * @param {fs.PathLike} path
      * @param {Boolean} returnFilename
     **/
-    chat.getFile = async (PATH, returnAsFilename) => {
+    sock.getFile = async (PATH, returnAsFilename) => {
       let res, filename
       const data = Buffer.isBuffer(PATH) ? PATH : /^data:.*?\/.*?;base64,/i.test(PATH) ? Buffer.from(PATH.split`,`[1], 'base64') : /^https?:\/\//.test(PATH) ? await (res = await fetch(PATH)).buffer() : fs.existsSync(PATH) ? (filename = PATH, fs.readFileSync(PATH)) : typeof PATH === 'string' ? PATH : Buffer.alloc(0)
       if (!Buffer.isBuffer(data)) throw new TypeError('Result is not a buffer')
@@ -67,8 +67,8 @@ const simpleDeclarations = async (chat) => {
      * @param {Boolean} ptt
      * @param {Object} options
     **/
-    chat.sendFile = async (jid, path, filename = '', caption = '', quoted, ptt = false, options = {}) => {
-      let type = await chat.getFile(path, true)
+    sock.sendFile = async (jid, path, filename = '', caption = '', quoted, ptt = false, options = {}) => {
+      let type = await sock.getFile(path, true)
       let { res, data: file, filename: pathFile } = type
       if (res && res.status !== 200 || file.length <= 65536) {
         try {
@@ -109,7 +109,7 @@ const simpleDeclarations = async (chat) => {
       }
       let m
       try {
-        m = await chat.sendMessage(jid, message, {
+        m = await sock.sendMessage(jid, message, {
           ...opt,
           ...options
         })
@@ -117,7 +117,7 @@ const simpleDeclarations = async (chat) => {
         console.error(e)
         m = null
       } finally {
-        if (!m) m = await chat.sendMessage(jid, {
+        if (!m) m = await sock.sendMessage(jid, {
           ...message,
           [mtype]: file
         }, {
@@ -135,12 +135,32 @@ const simpleDeclarations = async (chat) => {
      * @param {Object} quoted
      * @param {Object} options 
     **/
-    chat.sendMedia = async (jid, path, quoted, options = {}) => {
-      await chat.sendPresenceUpdate('composing', jid)
-      let { ext, mime, data } = await chat.getFile(path)
+    sock.sendMedia = async (jid, path, quoted, options = {}) => {
+      await sock.sendPresenceUpdate('composing', jid)
+      let { ext, mime, data } = await sock.getFile(path)
       let messageType = mime.split("/")[0]
       let pase = messageType.replace('application', 'document') || messageType
-      return await chat.sendMessage(jid, { [pase]: data, mimetype: mime, ...options }, { quoted })
+      return await sock.sendMessage(jid, { 
+        [pase]: data, 
+        mimetype: mime, ...options 
+      }, { quoted })
+    }
+    
+    /**
+     * Send ai message
+     * @param {String} jid
+     * @param {String} teks
+     * @param {Object} quoted
+    **/
+    sock.sendFromAIMessage = async (jid, teks, quoted) => {
+      return await sock.sendMessage(jid, { 
+        text: teks 
+      }, { 
+        additionalNodes: [
+          { attrs: { biz_bot: "1" }, tag: "bot" }, 
+          { attrs: {}, tag: "biz" }
+        ] 
+      }, { quoted: quoted })
     }
         
     /**
@@ -152,7 +172,7 @@ const simpleDeclarations = async (chat) => {
      * @param {proto.WebMessageInfo} qoted 
      * @param {Object} options 
     **/
-    chat.sendIAMessage = async (chatId, btns = [], qoted, opts = {}) => {
+    sock.sendIAMessage = async (chatId, btns = [], qoted, opts = {}) => {
       let messageContent = {
         viewOnceMessage: {
           message: {
@@ -175,7 +195,7 @@ const simpleDeclarations = async (chat) => {
               contextInfo: {
                 forwardingScore: 9999,
                 isForwarded: false,
-                mentionedJid: chat.ments(opts.header || '' + opts.content || '' + opts.footer || '')
+                mentionedJid: sock.ments(opts.header || '' + opts.content || '' + opts.footer || '')
               },
               externalAdReply: { 
                 showAdAttribution: true, 
@@ -193,7 +213,7 @@ const simpleDeclarations = async (chat) => {
         const media = await prepareWAMessageMedia({
           [opts.mediaType || 'image']: { url: opts.media } // type image/video { url: params }
         }, {
-          upload: chat.waUploadToServer
+          upload: sock.waUploadToServer
         })
         messageContent.viewOnceMessage.message.interactiveMessage.header.hasMediaAttachment = true
         messageContent.viewOnceMessage.message.interactiveMessage.header = {
@@ -202,7 +222,7 @@ const simpleDeclarations = async (chat) => {
         }
       }
       let msg = await generateWAMessageFromContent(chatId, messageContent, { quoted: qoted })
-      await chat.relayMessage(msg.key.remoteJid, msg.message, {
+      await sock.relayMessage(msg.key.remoteJid, msg.message, {
         messageId: msg.key.id
       })
     }
@@ -212,7 +232,7 @@ const simpleDeclarations = async (chat) => {
      * @param {String} chatId
      * @returns chatId
     **/
-    chat.createJid = (chatId) => {
+    sock.createJid = (chatId) => {
       if (!chatId) return chatId
       if (/:\d+@/gi.test(chatId)) {
         let decode = jidDecode(chatId) || {}
@@ -229,7 +249,7 @@ const simpleDeclarations = async (chat) => {
      * @param {Object} opts
      * @returns
     **/
-    chat.sendkon = async (chatId, teks, arr = [...[0, 1, 2]], quoted = "", opts = {}) => {
+    sock.sendkon = async (chatId, teks, arr = [...[0, 1, 2]], quoted = "", opts = {}) => {
       var push = []
       for (let i of arr)
         push.push({displayName: "", vcard: "BEGIN:VCARD\n" + 
@@ -247,7 +267,7 @@ const simpleDeclarations = async (chat) => {
           "\n" + 
           "END:VCARD"
         })
-      return new Promise((r, j) => r(chat.sendMessage(chatId, { contacts: { displayName: teks, contacts: push }, ...opts }, { quoted })))
+      return new Promise((r, j) => r(sock.sendMessage(chatId, { contacts: { displayName: teks, contacts: push }, ...opts }, { quoted })))
     }
     
     /**
@@ -260,10 +280,10 @@ const simpleDeclarations = async (chat) => {
      * @param {Object} opts
      * @returns
     **/
-    chat.sendlist = async (chatId, teks, foot, but = [...[(dis = ""), (id = ""), (des = "")]], quoted = "") => {
+    sock.sendlist = async (chatId, teks, foot, but = [...[(dis = ""), (id = ""), (des = "")]], quoted = "") => {
       let coi = []
       for (let u of but) coi.push({ title: u[0], rowId: u[1], description: u[2] })
-      return new Promise((r, j) => r(chat.sendMessage(chatId, { 
+      return new Promise((r, j) => r(sock.sendMessage(chatId, { 
         text: teks,
         footer: foot,
         title: null,
@@ -282,10 +302,10 @@ const simpleDeclarations = async (chat) => {
      * @param {Object} opts
      * @returns
     **/
-    chat.butteks = async (chatId, text, footer, but = [...[dis, id]], quoted = "", opts = {}) => {
+    sock.butteks = async (chatId, text, footer, but = [...[dis, id]], quoted = "", opts = {}) => {
       let button = []
       for (let i of but) button.push({ buttonId: i[1], buttonText: { displayText: i[0] }, type: 1 })
-      return new Promise((r, j) => r(chat.sendMessage(chatId, { text: text, footer, buttons: button, headerType: 2, ...opts }, { quoted })))
+      return new Promise((r, j) => r(sock.sendMessage(chatId, { text: text, footer, buttons: button, headerType: 2, ...opts }, { quoted })))
     }
     
     /**
@@ -296,8 +316,8 @@ const simpleDeclarations = async (chat) => {
      * @param {Object} opts
      * @returns
     **/
-    chat.sendteks = async (chatId, text, quoted = "", opts = {}) => {
-      return new Promise((r, j) => r(chat.sendMessage(chatId, { text, ...opts }, { quoted })))
+    sock.sendteks = async (chatId, text, quoted = "", opts = {}) => {
+      return new Promise((r, j) => r(sock.sendMessage(chatId, { text, ...opts }, { quoted })))
     }
 
     // SEND MEDIA FROM  URL
@@ -312,10 +332,10 @@ const simpleDeclarations = async (chat) => {
      * @param {Object} opts
      * @returns
     **/
-    chat.butvid = async (chatId, vid, text, footer, but = [...[dis, id]], quoted = "", opts = {}) => {
+    sock.butvid = async (chatId, vid, text, footer, but = [...[dis, id]], quoted = "", opts = {}) => {
       let button = []
       for (let i of but) button.push({ buttonId: i[1], buttonText: { displayText: i[0] }, type: 1 })
-      return new Promise(() => chat.sendMessage(chatId, { video: { url: vid }, caption: text, footer, buttons: button, headerType: 5, ...opts }, { quoted }))
+      return new Promise(() => sock.sendMessage(chatId, { video: { url: vid }, caption: text, footer, buttons: button, headerType: 5, ...opts }, { quoted }))
     }
     
     /**
@@ -329,10 +349,10 @@ const simpleDeclarations = async (chat) => {
      * @param {Object} opts
      * @returns
     **/
-    chat.butimg = async (chatId, img, text, footer, but = [...[dis, id]], quoted = "", opts = {}) => {
+    sock.butimg = async (chatId, img, text, footer, but = [...[dis, id]], quoted = "", opts = {}) => {
       let button = []
       for (let i of but) button.push({ buttonId: i[1], buttonText: { displayText: i[0] }, type: 1 })
-      return new Promise(() => chat.sendMessage(chatId, { image: { url: img }, caption: text, footer, buttons: button, headerType: 4, ...opts }, { quoted }))
+      return new Promise(() => sock.sendMessage(chatId, { image: { url: img }, caption: text, footer, buttons: button, headerType: 4, ...opts }, { quoted }))
     }
     
     /**
@@ -342,8 +362,8 @@ const simpleDeclarations = async (chat) => {
      * @param {Buffer} image
      * @returns
     **/
-    chat.sendimg = async (chatId, img, teks = "", quoted = "", opts = {}) => {
-      return new Promise(() => chat.sendMessage(chatId, { image: { url: img }, caption: teks }, { quoted }, opts))
+    sock.sendimg = async (chatId, img, teks = "", quoted = "", opts = {}) => {
+      return new Promise(() => sock.sendMessage(chatId, { image: { url: img }, caption: teks }, { quoted }, opts))
     }
     
     /**
@@ -353,8 +373,8 @@ const simpleDeclarations = async (chat) => {
      * @param {Buffer} vid
      * @returns
     **/
-    chat.sendvid = async (chatId, vid, teks = "", quoted = "", opts = {}) => {
-      return new Promise(() => chat.sendMessage(chatId, { video: { url: vid }, caption: teks }, { quoted }, opts))
+    sock.sendvid = async (chatId, vid, teks = "", quoted = "", opts = {}) => {
+      return new Promise(() => sock.sendMessage(chatId, { video: { url: vid }, caption: teks }, { quoted }, opts))
     }
     
     /**
@@ -364,8 +384,8 @@ const simpleDeclarations = async (chat) => {
      * @param {Buffer} aud
      * @returns
     **/
-    chat.sendaud = async (chatId, aud, quoted = "", opts = {}) => {
-      return new Promise(() => chat.sendMessage(chatId, { audio: { url: aud }, mimetype: "audio/mp4" }, { quoted }, opts))
+    sock.sendaud = async (chatId, aud, quoted = "", opts = {}) => {
+      return new Promise(() => sock.sendMessage(chatId, { audio: { url: aud }, mimetype: "audio/mp4" }, { quoted }, opts))
     }
     
     /**
@@ -375,8 +395,8 @@ const simpleDeclarations = async (chat) => {
      * @param {Buffer} doc
      * @returns
     **/
-    chat.senddoc = async (chatId, doc, name = "", mime = "", quoted = "", opts = {}) => {
-      return new Promise(() => chat.sendMessage(chatId, { document: { url: doc }, mimetype: mime, fileName: name }, { quoted }, opts))
+    sock.senddoc = async (chatId, doc, name = "", mime = "", quoted = "", opts = {}) => {
+      return new Promise(() => sock.sendMessage(chatId, { document: { url: doc }, mimetype: mime, fileName: name }, { quoted }, opts))
     }
 
     /**
@@ -386,8 +406,8 @@ const simpleDeclarations = async (chat) => {
      * @param {Buffer} path
      * @returns
     **/
-    chat.sendvidbuf = async (chatId, path, teks = "", quoted = "", opts = {}) => {
-      return new Promise(() => chat.sendMessage(chatId, { video: path, caption: teks }, { quoted }, opts))
+    sock.sendvidbuf = async (chatId, path, teks = "", quoted = "", opts = {}) => {
+      return new Promise(() => sock.sendMessage(chatId, { video: path, caption: teks }, { quoted }, opts))
     }
     
     /**
@@ -397,8 +417,8 @@ const simpleDeclarations = async (chat) => {
      * @param {Buffer} path
      * @returns
     **/
-    chat.sendimgbuf = async (chatId, buff, teks = "", quoted = "", opts = {}) => {
-      return new Promise(() => chat.sendMessage(chatId, { image: buff, caption: teks }, { quoted }, opts))
+    sock.sendimgbuf = async (chatId, buff, teks = "", quoted = "", opts = {}) => {
+      return new Promise(() => sock.sendMessage(chatId, { image: buff, caption: teks }, { quoted }, opts))
     }
     
     /**
@@ -408,8 +428,8 @@ const simpleDeclarations = async (chat) => {
      * @param {Buffer} aud
      * @returns
     **/
-    chat.sendaudlok = async (chatId, path, teks = "", quoted = "", opts = {}) => {
-      return new Promise(async () => chat.sendMessage(chatId, { audio: await fs.readFileSync(path) }, { quoted }, opts))
+    sock.sendaudlok = async (chatId, path, teks = "", quoted = "", opts = {}) => {
+      return new Promise(async () => sock.sendMessage(chatId, { audio: await fs.readFileSync(path) }, { quoted }, opts))
     }
     
     /**
@@ -419,15 +439,15 @@ const simpleDeclarations = async (chat) => {
      * @param {Buffer} doc
      * @returns
     **/
-    chat.senddoclok = async (chatId, path, name = "", mime = "", quoted = "", opts = {}) => {
-      return new Promise(async () => chat.sendMessage(chatId, { document: await fs.readFileSync(path), mimetype: mime, fileName: name }, { quoted }, opts))
+    sock.senddoclok = async (chatId, path, name = "", mime = "", quoted = "", opts = {}) => {
+      return new Promise(async () => sock.sendMessage(chatId, { document: await fs.readFileSync(path), mimetype: mime, fileName: name }, { quoted }, opts))
     }
     
     // hot restart // using pm2 for guide it
-    chat.restart = async (m) => {
+    sock.restart = async (m) => {
       if (/pm2/i.test(process.env._)) eval("process.exit()")
       else
-        return new Promise(() => chat.sendteks(m.chat, "silahkan gunakan PM2 untuk menggunakan auto restart App", m))
+        return new Promise(() => sock.sendteks(m.sock, "silahkan gunakan PM2 untuk menggunakan auto restart App", m))
     }
     
     /**
@@ -437,8 +457,8 @@ const simpleDeclarations = async (chat) => {
      * @param {Buffer} path
      * @returns
     **/
-    chat.sendstik = async (chatId, path, quoted = "", opts = {}) => {
-      return new Promise(() => chat.sendMessage(chatId, { sticker: path, ...opts }, { quoted }))
+    sock.sendstik = async (chatId, path, quoted = "", opts = {}) => {
+      return new Promise(() => sock.sendMessage(chatId, { sticker: path, ...opts }, { quoted }))
     }
     
     /**
@@ -447,7 +467,7 @@ const simpleDeclarations = async (chat) => {
      * @returns
      * By Bochiel team
      */
-    chat.resize = async (buff) => {
+    sock.resize = async (buff) => {
       const jimp = await Jimp.read(buff)
       const crop = jimp.crop(0, 0, await jimp.getWidth(), await jimp.getHeight())
       return {
@@ -462,9 +482,9 @@ const simpleDeclarations = async (chat) => {
      * @param {Buffer} img
      * @returns
      */
-    chat.createprofile = async (chatId, buff) => {
-      const { img } = await chat.resize(buff)
-      return chat.query({
+    sock.createprofile = async (chatId, buff) => {
+      const { img } = await sock.resize(buff)
+      return sock.query({
         tag: "iq",
         attrs: { to: chatId, type: "set", xmlns: "w:profile:picture" },
         content: [{ tag: "picture", attrs: { type: "image" }, content: img }]
@@ -477,7 +497,7 @@ const simpleDeclarations = async (chat) => {
      * @param {Object} db database in save file
      * @returns
     **/
-    chat.writejson = (path, db) => fs.writeFileSync(path, JSON.stringify(db, null, 2))
+    sock.writejson = (path, db) => fs.writeFileSync(path, JSON.stringify(db, null, 2))
 
     /**
      * Read file using fs and callback
@@ -485,8 +505,8 @@ const simpleDeclarations = async (chat) => {
      * @param {callback} cb callback form function
      * @returns
     **/
-    chat.readjson = (path) => JSON.parse(fs.readFileSync(path, "utf-8"))
-    return chat
+    sock.readjson = (path) => JSON.parse(fs.readFileSync(path, "utf-8"))
+    return sock
   } catch (e) {
     console.log(e)
   }
