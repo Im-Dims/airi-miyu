@@ -216,6 +216,7 @@ global.fs = fs
 
 global.APIs = {
   ssa: 'https://api.ssateam.my.id',
+  ambalzz: 'https://apii.ambalzz.biz.id',
   xyro: 'https://api.xyro.tech'
 }
 
