@@ -1,5 +1,5 @@
 {
-  "name": "airi miyu",
+  "name": "airi-miyu",
   "version": "1.3.0",
   "description": "miyu adalah bot whatsapp yang dibuat dengan type module dan di update secara berkala",
   "main": "main.js",
@@ -27,7 +27,7 @@
   "dependencies": {
     "@adiwajshing/keyed-db": "^0.2.4",
     "axios": "^1.3.5",
-    "baileys": "npm:@im-dims/baileys-md@6.6.4",
+    "baileys": "npm:@im-dims/baileys-md@latest",
     "chalk-animation": "^2.0.3",
     "cheerio": "^1.0.0-rc.12",
     "figlet": "^1.5.2",
